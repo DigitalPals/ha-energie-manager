@@ -76,9 +76,12 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
     velden[vol.Optional(CONF_ZON_MORGEN, default=defaults.get(CONF_ZON_MORGEN, []))] = (
         _SENSOR_MULTI
     )
-    velden[
-        vol.Optional(CONF_OVERSCHOT_EXTERN, default=defaults.get(CONF_OVERSCHOT_EXTERN, ""))
-    ] = vol.Any(_SENSOR, "")
+    if defaults.get(CONF_OVERSCHOT_EXTERN):
+        velden[
+            vol.Optional(CONF_OVERSCHOT_EXTERN, default=defaults[CONF_OVERSCHOT_EXTERN])
+        ] = _SENSOR
+    else:
+        velden[vol.Optional(CONF_OVERSCHOT_EXTERN)] = _SENSOR
     velden[
         vol.Optional(
             CONF_FORECAST_TARIEF_PATROON,
