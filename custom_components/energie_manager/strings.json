@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energie Manager — entiteiten koppelen",
+        "description": "Koppel de bestaande sensoren (invoer) en schakelaars/nummers (uitvoer). De standaardwaarden passen bij deze installatie.",
+        "data": {
+          "pv_vermogen": "PV-vermogen totaal (W)",
+          "ac_verbruik": "AC-verbruik totaal (W)",
+          "batterij_vermogen": "Batterijvermogen (W, + = laden)",
+          "batterij_soc": "Batterij SoC (%)",
+          "boiler_temperatuur": "Boilertemperatuur (BT7)",
+          "ev_status_raw": "EV-lader status (raw)",
+          "ev_vermogen": "EV-lader vermogen (W)",
+          "tarief": "Huidig stroomtarief (€/kWh)",
+          "forecast_tarief_patroon": "Patroon forecast-tariefsensoren ({n} = 1..8)",
+          "forecast_groep_patroon": "Patroon forecast-groepsensoren ({n} = 1..8)",
+          "zon_vandaag": "Zonprognose vandaag restant (kWh, meerdere sensoren worden opgeteld)",
+          "zon_morgen": "Zonprognose morgen (kWh, meerdere sensoren worden opgeteld)",
+          "overschot_extern": "Extern overschot-sensor (optioneel, overschrijft interne berekening)",
+          "warmwater_relais": "Warmwater boost relais (SG-ready)",
+          "ev_schakelaar": "EV laden schakelaar",
+          "ev_stroom": "EV laadstroom (A)",
+          "feed_in": "ESS max teruglevering (W)",
+          "max_ontlading": "ESS max ontlading (W)",
+          "net_setpoint": "ESS netsetpoint (W)",
+          "solar_limiet_1": "PV-limiet 1 (%)",
+          "solar_limiet_2": "PV-limiet 2 (%)"
+        }
+      }
+    },
+    "error": {
+      "entiteit_onbekend": "Deze entiteit bestaat niet."
+    },
+    "abort": {
+      "already_configured": "Energie Manager is al geconfigureerd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Entiteiten opnieuw koppelen",
+        "description": "Instelbare drempels staan als configuratie-entiteiten op het apparaat; hier koppel je alleen entiteiten."
+      }
+    },
+    "error": {
+      "entiteit_onbekend": "Deze entiteit bestaat niet."
+    }
+  },
+  "issues": {
+    "commando_fout": {
+      "title": "Commando blijft mislukken",
+      "description": "Energie Manager kan {entity_id} niet op {waarde} zetten. Controleer de entiteit; het commando wordt elke 30 s opnieuw geprobeerd."
+    }
+  },
+  "services": {
+    "forceer_modus": {
+      "name": "Forceer modus",
+      "description": "Forceer tijdelijk een energiemodus; veiligheidsmodi blijven voorgaan.",
+      "fields": {
+        "modus": { "name": "Modus", "description": "De te forceren modus, of 'automatisch' om vrij te geven." },
+        "duur": { "name": "Duur", "description": "Hoe lang de modus geforceerd blijft (max 8 uur)." }
+      }
+    },
+    "start_legionella": {
+      "name": "Start legionella-cyclus",
+      "description": "Start de anti-legionellacyclus nu (avondstop om 20:00 blijft gelden)."
+    },
+    "forceer_evaluatie": {
+      "name": "Forceer evaluatie",
+      "description": "Voer direct een beslissingscyclus uit."
+    },
+    "zet_legionella_succes": {
+      "name": "Zet laatste legionella-succes",
+      "description": "Corrigeer of migreer het tijdstip van het laatste geslaagde legionellaprogramma.",
+      "fields": {
+        "tijdstip": { "name": "Tijdstip", "description": "Tijdstip van het laatste succes." }
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+forceer_modus:
+  fields:
+    modus:
+      required: true
+      selector:
+        select:
+          options:
+            - automatisch
+            - zelfverbruik
+            - warmwater_boost
+            - ev_laden
+            - goedkoop_laden
+            - batterij_beschermen
+    duur:
+      required: false
+      default: { minutes: 30 }
+      selector:
+        duration:
+
+start_legionella:
+
+forceer_evaluatie:
+
+zet_legionella_succes:
+  fields:
+    tijdstip:
+      required: true
+      selector:
+        datetime:

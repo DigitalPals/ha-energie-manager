@@ -63,6 +63,7 @@ class Invoer:
     pv_w: float | None = None
     ac_load_w: float | None = None
     batterij_w: float | None = None  # positive = charging
+    overschot_extern_kw: float | None = None  # optional override sensor
     soc: float | None = None
     boiler_temp: float | None = None
     ev_status: str | None = None  # decoded text, see core.ev

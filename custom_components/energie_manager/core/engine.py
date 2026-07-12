@@ -26,12 +26,16 @@ from .prijs import nu_goedkoop
 
 # Inputs without which no sensible decision is possible.
 _KRITIEKE_INVOER = ("pv_w", "ac_load_w", "batterij_w", "soc", "boiler_temp")
+# With an external surplus sensor the power triad is not critical.
+_KRITIEKE_INVOER_EXTERN = ("soc", "boiler_temp")
 
 _MAX_TICK_S = 120.0  # cap counter integration across gaps/restarts
 
 
 def _overschot_kw(invoer: Invoer) -> float | None:
     """PV minus loads minus battery charging, in kW (surplus_after_battery)."""
+    if invoer.overschot_extern_kw is not None:
+        return invoer.overschot_extern_kw
     if invoer.pv_w is None or invoer.ac_load_w is None or invoer.batterij_w is None:
         return None
     return (invoer.pv_w - invoer.ac_load_w - max(0.0, invoer.batterij_w)) / 1000.0
@@ -100,9 +104,12 @@ def beslis(
     # ------------------------------------------------------------------ #
     # 3. Safety rung: critical inputs missing -> veilige_terugval.        #
     # ------------------------------------------------------------------ #
-    ontbrekend = [
-        naam for naam in _KRITIEKE_INVOER if getattr(invoer, naam) is None
-    ]
+    kritiek = (
+        _KRITIEKE_INVOER_EXTERN
+        if invoer.overschot_extern_kw is not None
+        else _KRITIEKE_INVOER
+    )
+    ontbrekend = [naam for naam in kritiek if getattr(invoer, naam) is None]
     if ontbrekend:
         return _veilige_terugval(invoer, config, s, nu, overlays, ontbrekend)
 
