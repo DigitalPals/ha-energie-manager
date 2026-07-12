@@ -20,3 +20,5 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # personal custom repository: not registered in home-assistant/brands
+          ignore: brands
