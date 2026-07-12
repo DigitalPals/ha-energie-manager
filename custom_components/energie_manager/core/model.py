@@ -168,6 +168,7 @@ class EngineState:
     warmwater_actief: bool = False
     ev_actief: bool = False
     ev_ampere: int = 0  # last commanded amps (kept in the 3.5 kW dead zone)
+    ev_direct_laden: bool = False  # manual override: charge until full/unplugged
     netladen_actief: bool = False
 
     overschot_laag_sinds: datetime | None = None

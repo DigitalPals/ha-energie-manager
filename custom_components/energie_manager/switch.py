@@ -75,7 +75,34 @@ async def async_setup_entry(
     hass: HomeAssistant, entry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     coordinator: EnergieManagerCoordinator = entry.runtime_data
-    async_add_entities(VlagSwitch(coordinator, b) for b in VLAGGEN)
+    entities: list[SwitchEntity] = [VlagSwitch(coordinator, b) for b in VLAGGEN]
+    entities.append(EvDirectLadenSwitch(coordinator))
+    async_add_entities(entities)
+
+
+class EvDirectLadenSwitch(EnergieManagerEntity, SwitchEntity):
+    """Manual override: charge the EV now, until full or unplugged.
+
+    Runtime state on the engine (not an options flag): it clears itself when
+    the session ends, so every new session starts back in automatic mode.
+    """
+
+    _attr_name = "EV direct laden"
+    _attr_icon = "mdi:lightning-bolt"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "ev_direct_laden")
+
+    @property
+    def is_on(self) -> bool:
+        s = self.coordinator.engine_state
+        return bool(s and s.ev_direct_laden)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self.coordinator.zet_ev_direct_laden(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self.coordinator.zet_ev_direct_laden(False)
 
 
 class VlagSwitch(EnergieManagerEntity, SwitchEntity):

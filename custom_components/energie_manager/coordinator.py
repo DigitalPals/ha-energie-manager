@@ -264,6 +264,13 @@ class EnergieManagerCoordinator(DataUpdateCoordinator[Besluit]):
             self.engine_state.geforceerd_tot = dt_util.now() + duur
         await self.async_request_refresh()
 
+    async def zet_ev_direct_laden(self, aan: bool) -> None:
+        if self.engine_state is None:
+            return
+        self.engine_state.ev_direct_laden = aan
+        await self.store.bewaar_direct(self.engine_state)
+        await self.async_request_refresh()
+
     async def start_legionella(self) -> None:
         if self.engine_state is None:
             return

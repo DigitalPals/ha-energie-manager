@@ -32,6 +32,7 @@ def state_naar_dict(s: EngineState) -> dict[str, Any]:
         "warmwater_actief": s.warmwater_actief,
         "ev_actief": s.ev_actief,
         "ev_ampere": s.ev_ampere,
+        "ev_direct_laden": s.ev_direct_laden,
         "netladen_actief": s.netladen_actief,
         "negatieve_prijs_actief": s.negatieve_prijs_actief,
         "legionella": {
@@ -61,6 +62,7 @@ def state_uit_dict(data: dict[str, Any] | None) -> EngineState:
     s.warmwater_actief = bool(data.get("warmwater_actief", False))
     s.ev_actief = bool(data.get("ev_actief", False))
     s.ev_ampere = int(data.get("ev_ampere", 0))
+    s.ev_direct_laden = bool(data.get("ev_direct_laden", False))
     s.netladen_actief = bool(data.get("netladen_actief", False))
     s.negatieve_prijs_actief = bool(data.get("negatieve_prijs_actief", False))
     leg = data.get("legionella") or {}

@@ -226,7 +226,25 @@ def beslis(
     ev_reden = ""
     status = invoer.ev_status
     ev_kw = (invoer.ev_power_w or 0.0) / 1000.0
-    if status is None:
+    # manual "direct laden" override: charge until full or unplugged
+    if s.ev_direct_laden and status in ev_mod.KLAAR_STATUSSEN:
+        s.ev_direct_laden = False  # session over: back to automatic
+        redenen.append(
+            "EV direct laden beëindigd: "
+            + ("auto vol" if status == "charged" else "losgekoppeld")
+        )
+    if s.ev_direct_laden and status in ev_mod.VERBONDEN_STATUSSEN:
+        overschot_voor_ev = overschot - (
+            config.overschot_drempel_kw if warmwater_gewenst else 0.0
+        )
+        amps_zon = ev_mod.zon_ampere(overschot_voor_ev, ev_kw, config)
+        ev_gewenst = True
+        ev_exempt = True  # manual action: no dwell wait
+        ev_ampere = min(
+            max(config.ev_vaste_ampere, amps_zon, config.ev_min_a), config.ev_max_a
+        )
+        ev_reden = f"handmatig: direct laden {ev_ampere} A"
+    elif status is None:
         ev_gewenst = False
         ev_exempt = True
         ev_reden = "EV-status onbekend"

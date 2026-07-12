@@ -423,6 +423,91 @@ def test_ev_goedkoop_wint_van_zon():
 
 
 # --------------------------------------------------------------------- #
+# EV direct laden (handmatige override)                                  #
+# --------------------------------------------------------------------- #
+
+
+def test_direct_laden_start_zonder_overschot_en_zonder_dwell():
+    s = state()
+    s.ev_direct_laden = True
+    s.dwell_tot = T0 + timedelta(seconds=500)  # dwell may not block a manual action
+    b, s2 = beslis(
+        invoer(pv_w=0.0, boiler_temp=61.0, ev_status="connected", soc=40.0),
+        config(),
+        s,
+        T0,
+    )
+    assert b.modus is Modus.EV_LADEN
+    assert cmd_waarde(b, Doel.EV_SCHAKELAAR) is True
+    assert cmd_waarde(b, Doel.EV_STROOM) == 16.0  # ev_vaste_ampere
+    assert cmd_waarde(b, Doel.MAX_ONTLADING) == 0.0  # grid soak: battery protected
+    assert "direct laden" in b.reden
+
+
+def test_direct_laden_gebruikt_zonnestroom_als_die_meer_is():
+    s = state()
+    s.ev_direct_laden = True
+    # 14 kW surplus -> 20 A zon > 16 A vast
+    b, _ = beslis(
+        invoer(boiler_temp=61.0, ev_status="connected", pv_w=15000.0), config(), s, T0
+    )
+    assert cmd_waarde(b, Doel.EV_STROOM) == 20.0
+
+
+def test_direct_laden_negeert_soc_reserve():
+    s = state()
+    s.ev_direct_laden = True
+    b, s2 = beslis(
+        invoer(pv_w=0.0, boiler_temp=61.0, ev_status="charging", soc=24.0),
+        config(),
+        s,
+        T0,
+    )
+    # grid energy: charging continues below battery reserve, discharge blocked
+    assert cmd_waarde(b, Doel.EV_SCHAKELAAR) is True
+    assert cmd_waarde(b, Doel.MAX_ONTLADING) == 0.0
+    assert s2.ev_direct_laden
+
+
+def test_direct_laden_wist_zichzelf_bij_vol():
+    s = state(ev_actief=True, ev_ampere=16)
+    s.ev_direct_laden = True
+    b, s2 = beslis(
+        invoer(pv_w=0.0, boiler_temp=61.0, ev_status="charged", soc=40.0),
+        config(),
+        s,
+        T0,
+    )
+    assert not s2.ev_direct_laden
+    assert not s2.ev_actief
+    assert "auto vol" in b.reden
+
+
+def test_direct_laden_wist_zichzelf_bij_loskoppelen():
+    s = state(ev_actief=True, ev_ampere=16)
+    s.ev_direct_laden = True
+    b, s2 = beslis(
+        invoer(pv_w=0.0, boiler_temp=61.0, ev_status="disconnected", soc=40.0),
+        config(),
+        s,
+        T0,
+    )
+    assert not s2.ev_direct_laden
+    assert "losgekoppeld" in b.reden
+
+
+def test_direct_laden_overleeft_noodreserve_zonder_te_wissen():
+    s = state(ev_actief=True, ev_ampere=16)
+    s.ev_direct_laden = True
+    b, s2 = beslis(
+        invoer(ev_status="charging", soc=9.0), config(), s, T0
+    )
+    assert b.modus is Modus.NOODRESERVE
+    assert cmd_waarde(b, Doel.EV_SCHAKELAAR) is False  # safety wins now
+    assert s2.ev_direct_laden  # but the override resumes after recovery
+
+
+# --------------------------------------------------------------------- #
 # Dwell                                                                  #
 # --------------------------------------------------------------------- #
 

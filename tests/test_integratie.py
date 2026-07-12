@@ -208,6 +208,7 @@ def test_store_rondreis():
     s.modus_sinds = datetime(2026, 7, 12, 12, 0)
     s.warmwater_actief = True
     s.ev_ampere = 14
+    s.ev_direct_laden = True
     s.legionella.laatste_succes = datetime(2026, 7, 11, 15, 0)
     s.netladen_uren_vandaag = 1.5
     s.netladen_datum = "2026-07-12"
@@ -216,5 +217,6 @@ def test_store_rondreis():
     assert terug.actieve_modus is Modus.WARMWATER_BOOST
     assert terug.warmwater_actief
     assert terug.ev_ampere == 14
+    assert terug.ev_direct_laden
     assert terug.legionella.laatste_succes == s.legionella.laatste_succes
     assert terug.netladen_uren_vandaag == 1.5
