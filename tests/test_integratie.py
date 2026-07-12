@@ -176,8 +176,9 @@ async def test_config_flow_happy_path(hass):
         DOMAIN, context={"source": "user"}
     )
     assert resultaat["type"] == "form"
+    invoer = {k: v for k, v in MAPPING_DEFAULTS.items() if v != ""}
     resultaat = await hass.config_entries.flow.async_configure(
-        resultaat["flow_id"], user_input=dict(MAPPING_DEFAULTS)
+        resultaat["flow_id"], user_input=invoer
     )
     assert resultaat["type"] == "create_entry"
     assert resultaat["data"]["pv_vermogen"] == MAPPING_DEFAULTS["pv_vermogen"]
@@ -188,7 +189,7 @@ async def test_config_flow_onbekende_entiteit(hass):
     resultaat = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": "user"}
     )
-    invoer = dict(MAPPING_DEFAULTS)
+    invoer = {k: v for k, v in MAPPING_DEFAULTS.items() if v != ""}
     invoer["boiler_temperatuur"] = "sensor.bestaat_niet"
     resultaat = await hass.config_entries.flow.async_configure(
         resultaat["flow_id"], user_input=invoer
