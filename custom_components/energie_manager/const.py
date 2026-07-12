@@ -55,8 +55,16 @@ MAPPING_DEFAULTS: dict[str, str | list[str]] = {
     CONF_TARIEF: "sensor.zonneplan_current_electricity_tariff",
     CONF_FORECAST_TARIEF_PATROON: "sensor.zonneplan_forecast_tariff_hour_{n}",
     CONF_FORECAST_GROEP_PATROON: "sensor.zonneplan_forecast_tariff_group_hour_{n}",
-    CONF_ZON_VANDAAG: [],
-    CONF_ZON_MORGEN: [],
+    CONF_ZON_VANDAAG: [
+        "sensor.energy_production_today_remaining",
+        "sensor.energy_production_today_remaining_2",
+        "sensor.energy_production_today_remaining_3",
+    ],
+    CONF_ZON_MORGEN: [
+        "sensor.energy_production_tomorrow",
+        "sensor.energy_production_tomorrow_2",
+        "sensor.energy_production_tomorrow_3",
+    ],
     CONF_OVERSCHOT_EXTERN: "",
     CONF_DOEL[Doel.WARMWATER_RELAIS]: "switch.shellypro1_ac15186d9688_switch_0",
     CONF_DOEL[Doel.EV_SCHAKELAAR]: "switch.evcs_charging",
