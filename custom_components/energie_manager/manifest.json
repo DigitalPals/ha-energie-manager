@@ -1,13 +1,13 @@
 {
   "domain": "energie_manager",
   "name": "Energie Manager",
-  "codeowners": ["@john-digitalbrain"],
+  "codeowners": ["@DigitalPals"],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/john-digitalbrain/ha-energie-manager",
+  "documentation": "https://github.com/DigitalPals/ha-energie-manager",
   "integration_type": "hub",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/john-digitalbrain/ha-energie-manager/issues",
+  "issue_tracker": "https://github.com/DigitalPals/ha-energie-manager/issues",
   "requirements": [],
   "single_config_entry": true,
   "version": "0.1.0"
