@@ -16,7 +16,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .coordinator import EnergieManagerCoordinator
-from .core.model import Modus
+from .core.model import Modus, SessieRecord, SessieState
 from .core.prijs import goedkoopste_venster
 from .entity import EnergieManagerEntity
 
@@ -35,6 +35,8 @@ async def async_setup_entry(
             VolgendeLegionellaRunSensor(coordinator),
             GoedkoopsteVensterSensor(coordinator),
             EvLaadstroomSensor(coordinator),
+            EvSessieKostenSensor(coordinator),
+            EvSessiesSensor(coordinator),
         ]
     )
 
@@ -211,3 +213,112 @@ class EvLaadstroomSensor(EnergieManagerEntity, SensorEntity):
         if not self.coordinator.data:
             return None
         return self.coordinator.data.ev_ampere if self.coordinator.data.ev_actief else 0
+
+
+def _sessie_kerncijfers(
+    energie_kwh: float,
+    energie_gratis_kwh: float,
+    kosten_eur: float,
+) -> dict[str, Any]:
+    """Derived per-session figures (not stored, computed at display time)."""
+    if energie_kwh > 1e-6:
+        pct_gratis = round(energie_gratis_kwh / energie_kwh * 100.0, 1)
+        gemiddeld = round(kosten_eur / energie_kwh, 4)
+    else:
+        pct_gratis = None
+        gemiddeld = None
+    return {"pct_gratis": pct_gratis, "gemiddeld_tarief": gemiddeld}
+
+
+def _sessie_dict(r: SessieRecord) -> dict[str, Any]:
+    return {
+        "start": r.start.isoformat(),
+        "einde": r.einde.isoformat(),
+        "energie_kwh": round(r.energie_kwh, 3),
+        "energie_gratis_kwh": round(r.energie_gratis_kwh, 3),
+        "energie_net_kwh": round(r.energie_net_kwh, 3),
+        "kosten_eur": round(r.kosten_eur, 2),
+        **_sessie_kerncijfers(r.energie_kwh, r.energie_gratis_kwh, r.kosten_eur),
+    }
+
+
+class EvSessieKostenSensor(EnergieManagerEntity, SensorEntity):
+    """Cost of the running EV session; falls back to the last completed one."""
+
+    _attr_name = "EV sessie kosten"
+    _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_native_unit_of_measurement = "EUR"
+    _attr_suggested_display_precision = 2
+    _attr_icon = "mdi:cash-clock"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "ev_sessie_kosten")
+
+    def _bron(self) -> SessieState | SessieRecord | None:
+        s = self.coordinator.engine_state
+        if s is None:
+            return None
+        if s.sessie.actief:
+            return s.sessie
+        if s.sessie_historie:
+            return s.sessie_historie[0]
+        return None
+
+    @property
+    def native_value(self) -> float | None:
+        bron = self._bron()
+        return round(bron.kosten_eur, 4) if bron is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        bron = self._bron()
+        invoer = self.coordinator.laatste_invoer
+        attrs: dict[str, Any] = {
+            "actief": isinstance(bron, SessieState),
+            "huidig_tarief": invoer.tarief if invoer else None,
+        }
+        if bron is None:
+            return attrs
+        attrs.update(
+            {
+                "start": bron.start.isoformat() if bron.start else None,
+                "einde": bron.einde.isoformat()
+                if isinstance(bron, SessieRecord)
+                else None,
+                "energie_kwh": round(bron.energie_kwh, 3),
+                "energie_gratis_kwh": round(bron.energie_gratis_kwh, 3),
+                "energie_net_kwh": round(bron.energie_net_kwh, 3),
+                "energie_ongeprijsd_kwh": round(bron.energie_ongeprijsd_kwh, 3),
+                **_sessie_kerncijfers(
+                    bron.energie_kwh, bron.energie_gratis_kwh, bron.kosten_eur
+                ),
+            }
+        )
+        return attrs
+
+
+class EvSessiesSensor(EnergieManagerEntity, SensorEntity):
+    """History of completed EV sessions; state = end of the most recent one."""
+
+    _attr_name = "EV sessies"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:history"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "ev_sessies")
+
+    @property
+    def native_value(self) -> datetime | None:
+        s = self.coordinator.engine_state
+        if s is None or not s.sessie_historie:
+            return None
+        return dt_util.as_utc(s.sessie_historie[0].einde)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        s = self.coordinator.engine_state
+        historie = s.sessie_historie if s else []
+        return {
+            "aantal": len(historie),
+            "sessies": [_sessie_dict(r) for r in historie],
+        }

@@ -9,7 +9,12 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import MIGRATIE_INPUT_DATETIME
+from .const import (
+    CONF_EV_SESSIE_ENERGIE,
+    CONF_NET_VERMOGEN,
+    MAPPING_DEFAULTS,
+    MIGRATIE_INPUT_DATETIME,
+)
 from .coordinator import EnergieManagerCoordinator
 from .executor import Uitvoerder
 from .services import async_registreer_services
@@ -27,6 +32,19 @@ PLATFORMS = [
 ]
 
 type EnergieManagerConfigEntry = ConfigEntry[EnergieManagerCoordinator]
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: EnergieManagerConfigEntry
+) -> bool:
+    """Backfill mapping keys added after the entry was created."""
+    if entry.version == 1:
+        data = dict(entry.data)
+        for sleutel in (CONF_EV_SESSIE_ENERGIE, CONF_NET_VERMOGEN):
+            data.setdefault(sleutel, MAPPING_DEFAULTS[sleutel])
+        hass.config_entries.async_update_entry(entry, data=data, version=2)
+        _LOGGER.info("Config entry gemigreerd naar versie 2 (EV-sessie invoer)")
+    return True
 
 
 async def async_setup_entry(

@@ -12,6 +12,8 @@
           "boiler_temperatuur": "Boilertemperatuur (BT7)",
           "ev_status_raw": "EV-lader status (raw)",
           "ev_vermogen": "EV-lader vermogen (W)",
+          "ev_sessie_energie": "EV-lader sessie-energie (kWh)",
+          "net_vermogen": "Netvermogen (W, + = import)",
           "tarief": "Huidig stroomtarief (€/kWh)",
           "forecast_tarief_patroon": "Patroon forecast-tariefsensoren ({n} = 1..8)",
           "forecast_groep_patroon": "Patroon forecast-groepsensoren ({n} = 1..8)",
@@ -58,8 +60,14 @@
       "name": "Forceer modus",
       "description": "Forceer tijdelijk een energiemodus; veiligheidsmodi blijven voorgaan.",
       "fields": {
-        "modus": { "name": "Modus", "description": "De te forceren modus, of 'automatisch' om vrij te geven." },
-        "duur": { "name": "Duur", "description": "Hoe lang de modus geforceerd blijft (max 8 uur)." }
+        "modus": {
+          "name": "Modus",
+          "description": "De te forceren modus, of 'automatisch' om vrij te geven."
+        },
+        "duur": {
+          "name": "Duur",
+          "description": "Hoe lang de modus geforceerd blijft (max 8 uur)."
+        }
       }
     },
     "start_legionella": {
@@ -74,7 +82,10 @@
       "name": "Zet laatste legionella-succes",
       "description": "Corrigeer of migreer het tijdstip van het laatste geslaagde legionellaprogramma.",
       "fields": {
-        "tijdstip": { "name": "Tijdstip", "description": "Tijdstip van het laatste succes." }
+        "tijdstip": {
+          "name": "Tijdstip",
+          "description": "Tijdstip van het laatste succes."
+        }
       }
     }
   }

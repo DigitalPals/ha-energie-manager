@@ -15,10 +15,12 @@ from .const import (
     CONF_BATTERIJ_VERMOGEN,
     CONF_BOILER_TEMPERATUUR,
     CONF_DOEL,
+    CONF_EV_SESSIE_ENERGIE,
     CONF_EV_STATUS_RAW,
     CONF_EV_VERMOGEN,
     CONF_FORECAST_GROEP_PATROON,
     CONF_FORECAST_TARIEF_PATROON,
+    CONF_NET_VERMOGEN,
     CONF_OVERSCHOT_EXTERN,
     CONF_PV_VERMOGEN,
     CONF_TARIEF,
@@ -51,6 +53,8 @@ _INVOER_VELDEN: dict[str, Any] = {
     CONF_BOILER_TEMPERATUUR: _SENSOR,
     CONF_EV_STATUS_RAW: _SENSOR,
     CONF_EV_VERMOGEN: _SENSOR,
+    CONF_EV_SESSIE_ENERGIE: _SENSOR,
+    CONF_NET_VERMOGEN: _SENSOR,
     CONF_TARIEF: _SENSOR,
 }
 
@@ -108,7 +112,7 @@ def _valideer(hass, invoer: dict[str, Any]) -> dict[str, str]:
 
 
 class EnergieManagerConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

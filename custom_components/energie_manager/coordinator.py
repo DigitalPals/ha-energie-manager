@@ -17,10 +17,12 @@ from .const import (
     CONF_BATTERIJ_SOC,
     CONF_BATTERIJ_VERMOGEN,
     CONF_BOILER_TEMPERATUUR,
+    CONF_EV_SESSIE_ENERGIE,
     CONF_EV_STATUS_RAW,
     CONF_EV_VERMOGEN,
     CONF_FORECAST_GROEP_PATROON,
     CONF_FORECAST_TARIEF_PATROON,
+    CONF_NET_VERMOGEN,
     CONF_OVERSCHOT_EXTERN,
     CONF_PV_VERMOGEN,
     CONF_TARIEF,
@@ -172,6 +174,8 @@ class EnergieManagerCoordinator(DataUpdateCoordinator[Besluit]):
             boiler_temp=self._lees_float(CONF_BOILER_TEMPERATUUR),
             ev_status=decodeer_status(int(ev_raw) if ev_raw is not None else None),
             ev_power_w=self._lees_float(CONF_EV_VERMOGEN),
+            ev_sessie_energie_kwh=self._lees_float(CONF_EV_SESSIE_ENERGIE),
+            net_vermogen_w=self._lees_float(CONF_NET_VERMOGEN),
             tarief=self._lees_float(CONF_TARIEF),
             prijs_slots=bouw_slots(nu, self._lees_float(CONF_TARIEF), self._lees_forecast()),
             zon_vandaag_kwh=self._som_entiteiten(CONF_ZON_VANDAAG),
@@ -198,6 +202,9 @@ class EnergieManagerCoordinator(DataUpdateCoordinator[Besluit]):
         vorige = self.engine_state
         vorige_succes = vorige.legionella.laatste_succes if vorige else None
         vorige_neg = vorige.negatieve_prijs_actief if vorige else False
+        vorige_sessie_kop = (
+            vorige.sessie_historie[0] if vorige and vorige.sessie_historie else None
+        )
 
         besluit, nieuwe_state = beslis(invoer, config, self.engine_state, nu)
         self.engine_state = nieuwe_state
@@ -205,10 +212,14 @@ class EnergieManagerCoordinator(DataUpdateCoordinator[Besluit]):
         if self.automatisch_beheer:
             await self.uitvoerder.voer_uit(besluit.commandos)
 
+        nieuwe_sessie_kop = (
+            nieuwe_state.sessie_historie[0] if nieuwe_state.sessie_historie else None
+        )
         # persistence: immediate for health/price-critical transitions
         if (
             nieuwe_state.legionella.laatste_succes != vorige_succes
             or nieuwe_state.negatieve_prijs_actief != vorige_neg
+            or nieuwe_sessie_kop != vorige_sessie_kop
         ):
             await self.store.bewaar_direct(nieuwe_state)
         else:

@@ -32,6 +32,8 @@ def zet_states(hass, **over):
         MAPPING_DEFAULTS["boiler_temperatuur"]: "45",
         MAPPING_DEFAULTS["ev_status_raw"]: "0",
         MAPPING_DEFAULTS["ev_vermogen"]: "0",
+        MAPPING_DEFAULTS["ev_sessie_energie"]: "0.00",
+        MAPPING_DEFAULTS["net_vermogen"]: "0",
         MAPPING_DEFAULTS["tarief"]: "0.20",
         RELAIS: "off",
         EV_SCHAKELAAR: "off",
@@ -220,3 +222,113 @@ def test_store_rondreis():
     assert terug.ev_direct_laden
     assert terug.legionella.laatste_succes == s.legionella.laatste_succes
     assert terug.netladen_uren_vandaag == 1.5
+
+
+def test_store_rondreis_sessie():
+    from datetime import datetime
+
+    from custom_components.energie_manager.core.model import (
+        EngineState,
+        SessieRecord,
+        SessieState,
+    )
+
+    s = EngineState()
+    s.sessie = SessieState(
+        actief=True,
+        start=datetime(2026, 7, 12, 11, 0),
+        laatste_meter_kwh=5.19,
+        energie_kwh=5.19,
+        energie_gratis_kwh=4.0,
+        energie_net_kwh=1.19,
+        energie_ongeprijsd_kwh=0.1,
+        kosten_eur=0.24,
+    )
+    s.sessie_historie = [
+        SessieRecord(
+            start=datetime(2026, 7, 11, 9, 0),
+            einde=datetime(2026, 7, 11, 13, 0),
+            energie_kwh=8.4,
+            energie_gratis_kwh=8.4,
+            energie_net_kwh=0.0,
+            energie_ongeprijsd_kwh=0.0,
+            kosten_eur=0.0,
+        ),
+        SessieRecord(
+            start=datetime(2026, 7, 10, 18, 0),
+            einde=datetime(2026, 7, 10, 21, 0),
+            energie_kwh=12.0,
+            energie_gratis_kwh=1.0,
+            energie_net_kwh=11.0,
+            energie_ongeprijsd_kwh=0.0,
+            kosten_eur=2.31,
+        ),
+    ]
+
+    terug = state_uit_dict(state_naar_dict(s))
+    assert terug.sessie == s.sessie
+    assert terug.sessie_historie == s.sessie_historie
+
+
+async def test_sessie_sensoren(hass):
+    zet_states(
+        hass,
+        **{
+            MAPPING_DEFAULTS["ev_status_raw"]: "2",  # charging
+            MAPPING_DEFAULTS["ev_vermogen"]: "10000",
+            MAPPING_DEFAULTS["net_vermogen"]: "5000",
+        },
+    )
+    entry = maak_entry()  # master off: decide only, no service calls
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data
+
+    # first tick was baseline (meter 0.00); now the meter climbs 0.5 kWh
+    hass.states.async_set(MAPPING_DEFAULTS["ev_sessie_energie"], "0.50")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    kosten = hass.states.get("sensor.energie_manager_ev_sessie_kosten")
+    assert kosten is not None
+    # half from grid (5 of 10 kW) at €0.20 -> 0.25 kWh x 0.20 = €0.05
+    assert float(kosten.state) == pytest.approx(0.05)
+    assert kosten.attributes["actief"] is True
+    assert kosten.attributes["energie_kwh"] == pytest.approx(0.5)
+    assert kosten.attributes["energie_net_kwh"] == pytest.approx(0.25)
+    assert kosten.attributes["pct_gratis"] == pytest.approx(50.0)
+
+    # charger reports charged: session finalizes into the history
+    hass.states.async_set(MAPPING_DEFAULTS["ev_status_raw"], "3")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    sessies = hass.states.get("sensor.energie_manager_ev_sessies")
+    assert sessies is not None
+    assert sessies.attributes["aantal"] == 1
+    record = sessies.attributes["sessies"][0]
+    assert record["energie_kwh"] == pytest.approx(0.5)
+    assert record["kosten_eur"] == pytest.approx(0.05)
+    # kosten sensor now shows the completed session
+    kosten = hass.states.get("sensor.energie_manager_ev_sessie_kosten")
+    assert kosten.attributes["actief"] is False
+    assert kosten.attributes["einde"] is not None
+
+
+async def test_migratie_entry_v1_backfill(hass):
+    zet_states(hass)
+    data = {
+        k: v
+        for k, v in MAPPING_DEFAULTS.items()
+        if k not in ("ev_sessie_energie", "net_vermogen")
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Energie Manager",
+        unique_id=DOMAIN,
+        data=data,
+        version=1,
+    )
+    await _setup(hass, entry)
+    assert entry.version == 2
+    assert entry.data["ev_sessie_energie"] == MAPPING_DEFAULTS["ev_sessie_energie"]
+    assert entry.data["net_vermogen"] == MAPPING_DEFAULTS["net_vermogen"]

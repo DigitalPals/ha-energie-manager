@@ -24,6 +24,8 @@ CONF_BATTERIJ_SOC = "batterij_soc"
 CONF_BOILER_TEMPERATUUR = "boiler_temperatuur"
 CONF_EV_STATUS_RAW = "ev_status_raw"
 CONF_EV_VERMOGEN = "ev_vermogen"
+CONF_EV_SESSIE_ENERGIE = "ev_sessie_energie"  # charger session meter (kWh)
+CONF_NET_VERMOGEN = "net_vermogen"  # grid power (W, positive = import)
 CONF_TARIEF = "tarief"
 CONF_FORECAST_TARIEF_PATROON = "forecast_tarief_patroon"
 CONF_FORECAST_GROEP_PATROON = "forecast_groep_patroon"
@@ -52,6 +54,8 @@ MAPPING_DEFAULTS: dict[str, str | list[str]] = {
     CONF_BOILER_TEMPERATUUR: "sensor.bt7_hw_top_40013",
     CONF_EV_STATUS_RAW: "sensor.evcs_status_raw",
     CONF_EV_VERMOGEN: "sensor.evcs_total_power",
+    CONF_EV_SESSIE_ENERGIE: "sensor.evcs_session_energy",
+    CONF_NET_VERMOGEN: "sensor.victron_grid_power_total",
     CONF_TARIEF: "sensor.zonneplan_current_electricity_tariff",
     CONF_FORECAST_TARIEF_PATROON: "sensor.zonneplan_forecast_tariff_hour_{n}",
     CONF_FORECAST_GROEP_PATROON: "sensor.zonneplan_forecast_tariff_group_hour_{n}",
@@ -106,6 +110,8 @@ MAX_LEEFTIJD_S: dict[str, float] = {
     CONF_BOILER_TEMPERATUUR: 1800,
     CONF_EV_STATUS_RAW: 300,
     CONF_EV_VERMOGEN: 300,
+    CONF_EV_SESSIE_ENERGIE: 300,
+    CONF_NET_VERMOGEN: 300,
     CONF_TARIEF: 7200,
     CONF_OVERSCHOT_EXTERN: 300,
 }

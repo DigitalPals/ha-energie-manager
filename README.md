@@ -50,6 +50,8 @@ automatisch overgenomen.
 | `sensor.energie_manager_besluit_reden` | leesbare uitleg van het laatste besluit |
 | `sensor.energie_manager_zonne_overschot` | PV − verbruik − acculaden (kW) |
 | `sensor.energie_manager_legionella_laatste_succes` / `_dagen_geleden` / `volgende_legionella_run` | legionellastatus |
+| `sensor.energie_manager_ev_sessie_kosten` | kosten van de lopende (of laatste) EV-laadsessie; alleen netstroom telt, zon/accu = €0 (uitsplitsing in attributen) |
+| `sensor.energie_manager_ev_sessies` | laatste 10 laadsessies (start/einde, kWh, % gratis, kosten) in attributen |
 | `binary_sensor.energie_manager_invoer_verouderd` | probleem: welke sensoren stil zijn |
 | `switch.energie_manager_automatisch_beheer` | hoofdschakelaar (uit = rekenen, niets uitvoeren) |
 | overige switches | functievlaggen per onderdeel |

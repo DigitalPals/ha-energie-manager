@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
-from .core.model import EngineState, LegionellaState, Modus
+from .core.model import EngineState, LegionellaState, Modus, SessieRecord, SessieState
 
 OPSLAG_VERSIE = 1
 DEBOUNCE_S = 10.0
@@ -46,6 +46,28 @@ def state_naar_dict(s: EngineState) -> dict[str, Any]:
         "netladen_datum": s.netladen_datum,
         "geforceerde_modus": str(s.geforceerde_modus) if s.geforceerde_modus else None,
         "geforceerd_tot": _iso(s.geforceerd_tot),
+        "sessie": {
+            "actief": s.sessie.actief,
+            "start": _iso(s.sessie.start),
+            "laatste_meter_kwh": s.sessie.laatste_meter_kwh,
+            "energie_kwh": s.sessie.energie_kwh,
+            "energie_gratis_kwh": s.sessie.energie_gratis_kwh,
+            "energie_net_kwh": s.sessie.energie_net_kwh,
+            "energie_ongeprijsd_kwh": s.sessie.energie_ongeprijsd_kwh,
+            "kosten_eur": s.sessie.kosten_eur,
+        },
+        "sessie_historie": [
+            {
+                "start": _iso(r.start),
+                "einde": _iso(r.einde),
+                "energie_kwh": r.energie_kwh,
+                "energie_gratis_kwh": r.energie_gratis_kwh,
+                "energie_net_kwh": r.energie_net_kwh,
+                "energie_ongeprijsd_kwh": r.energie_ongeprijsd_kwh,
+                "kosten_eur": r.kosten_eur,
+            }
+            for r in s.sessie_historie
+        ],
     }
 
 
@@ -82,6 +104,35 @@ def state_uit_dict(data: dict[str, Any] | None) -> EngineState:
         except ValueError:
             s.geforceerde_modus = None
     s.geforceerd_tot = _dt(data.get("geforceerd_tot"))
+    ses = data.get("sessie") or {}
+    meter = ses.get("laatste_meter_kwh")
+    s.sessie = SessieState(
+        actief=bool(ses.get("actief", False)),
+        start=_dt(ses.get("start")),
+        laatste_meter_kwh=float(meter) if meter is not None else None,
+        energie_kwh=float(ses.get("energie_kwh", 0.0)),
+        energie_gratis_kwh=float(ses.get("energie_gratis_kwh", 0.0)),
+        energie_net_kwh=float(ses.get("energie_net_kwh", 0.0)),
+        energie_ongeprijsd_kwh=float(ses.get("energie_ongeprijsd_kwh", 0.0)),
+        kosten_eur=float(ses.get("kosten_eur", 0.0)),
+    )
+    s.sessie_historie = []
+    for rec in data.get("sessie_historie") or []:
+        start = _dt(rec.get("start"))
+        einde = _dt(rec.get("einde"))
+        if start is None or einde is None:
+            continue  # malformed record: skip defensively
+        s.sessie_historie.append(
+            SessieRecord(
+                start=start,
+                einde=einde,
+                energie_kwh=float(rec.get("energie_kwh", 0.0)),
+                energie_gratis_kwh=float(rec.get("energie_gratis_kwh", 0.0)),
+                energie_net_kwh=float(rec.get("energie_net_kwh", 0.0)),
+                energie_ongeprijsd_kwh=float(rec.get("energie_ongeprijsd_kwh", 0.0)),
+                kosten_eur=float(rec.get("kosten_eur", 0.0)),
+            )
+        )
     return s
 
 

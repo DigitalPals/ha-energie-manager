@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 from . import ev as ev_mod
 from . import legionella as leg_mod
+from . import sessie as sessie_mod
 from .model import (
     Besluit,
     Commando,
@@ -52,6 +53,23 @@ def beslis(
 
     overschot = _overschot_kw(invoer)
     redenen: list[str] = []
+
+    # ------------------------------------------------------------------ #
+    # 0. EV session accounting (always runs, even into the safety rungs   #
+    #    below — a stale PV sensor must not stop cost tracking).          #
+    # ------------------------------------------------------------------ #
+    sessie_res = sessie_mod.update(
+        s.sessie,
+        s.sessie_historie,
+        meter_kwh=invoer.ev_sessie_energie_kwh,
+        ev_status=invoer.ev_status,
+        ev_power_w=invoer.ev_power_w,
+        net_vermogen_w=invoer.net_vermogen_w,
+        tarief=invoer.tarief,
+        nu=nu,
+    )
+    if sessie_res.beeindigd:
+        redenen.append("EV-sessie afgerond")
 
     # ------------------------------------------------------------------ #
     # 1. Legionella hold tracker (always runs; solar days self-satisfy).  #

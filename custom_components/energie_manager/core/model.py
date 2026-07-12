@@ -57,6 +57,33 @@ class PrijsSlot:
 
 
 @dataclass(frozen=True)
+class SessieRecord:
+    """Snapshot of a completed EV charging session (newest first in history)."""
+
+    start: datetime
+    einde: datetime
+    energie_kwh: float
+    energie_gratis_kwh: float  # solar/battery share, €0
+    energie_net_kwh: float  # grid share, priced at the dynamic tariff
+    energie_ongeprijsd_kwh: float  # grid share metered while tarief was None
+    kosten_eur: float  # signed; negative tariffs yield negative cost
+
+
+@dataclass
+class SessieState:
+    """Running EV charging session accumulator (see core.sessie)."""
+
+    actief: bool = False
+    start: datetime | None = None
+    laatste_meter_kwh: float | None = None  # last seen charger session meter
+    energie_kwh: float = 0.0
+    energie_gratis_kwh: float = 0.0
+    energie_net_kwh: float = 0.0
+    energie_ongeprijsd_kwh: float = 0.0
+    kosten_eur: float = 0.0
+
+
+@dataclass(frozen=True)
 class Invoer:
     """Snapshot of the world for one tick. None = unavailable or stale."""
 
@@ -68,6 +95,8 @@ class Invoer:
     boiler_temp: float | None = None
     ev_status: str | None = None  # decoded text, see core.ev
     ev_power_w: float | None = None
+    ev_sessie_energie_kwh: float | None = None  # charger's own session meter
+    net_vermogen_w: float | None = None  # grid power, positive = import
     tarief: float | None = None
     prijs_slots: tuple[PrijsSlot, ...] = ()
     zon_vandaag_kwh: float | None = None  # remaining forecast today
@@ -180,6 +209,9 @@ class EngineState:
 
     legionella: LegionellaState = field(default_factory=LegionellaState)
 
+    sessie: SessieState = field(default_factory=SessieState)
+    sessie_historie: list[SessieRecord] = field(default_factory=list)
+
     netladen_uren_vandaag: float = 0.0
     netladen_datum: str | None = None  # ISO date the counter belongs to
 
@@ -208,7 +240,9 @@ class Besluit:
 
 
 def kopieer_state(state: EngineState) -> EngineState:
-    """Copy the engine state (LegionellaState copied too)."""
+    """Copy the engine state (mutable sub-state copied too)."""
     nieuwe = replace(state)
     nieuwe.legionella = replace(state.legionella)
+    nieuwe.sessie = replace(state.sessie)
+    nieuwe.sessie_historie = list(state.sessie_historie)
     return nieuwe
