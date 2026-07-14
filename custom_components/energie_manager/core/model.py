@@ -15,6 +15,9 @@ class Modus(StrEnum):
     GOEDKOOP_LADEN = "goedkoop_laden"
     WARMWATER_BOOST = "warmwater_boost"
     EV_LADEN = "ev_laden"
+    VOORKOELEN = "voorkoelen"
+    PIEK_ONTLADEN = "piek_ontladen"
+    PIEK_VASTHOUDEN = "piek_vasthouden"
     BATTERIJ_BESCHERMEN = "batterij_beschermen"
     ZELFVERBRUIK = "zelfverbruik"
 
@@ -38,6 +41,7 @@ class Doel(StrEnum):
     NET_SETPOINT = "net_setpoint"
     SOLAR_LIMIET_1 = "solar_limiet_1"
     SOLAR_LIMIET_2 = "solar_limiet_2"
+    KOEL_OFFSET = "koel_offset"
 
 
 @dataclass(frozen=True)
@@ -54,6 +58,7 @@ class PrijsSlot:
     start: datetime
     tarief: float  # €/kWh
     groep: str | None = None  # "cheap" / "normal" / "expensive" / None
+    zon_pct: float | None = None  # Zonneplan solar_percentage (0-100)
 
 
 @dataclass(frozen=True)
@@ -101,6 +106,10 @@ class Invoer:
     prijs_slots: tuple[PrijsSlot, ...] = ()
     zon_vandaag_kwh: float | None = None  # remaining forecast today
     zon_morgen_kwh: float | None = None
+    huislast_gemiddeld_kw: float | None = None  # 24h EMA of ac_load (coordinator)
+    binnen_temp: float | None = None  # indoor reference temp (voorkoelen)
+    buiten_temp: float | None = None  # outdoor temp (voorkoelen season guard)
+    dauwpunt_marge_c: float | None = None  # worst-room floor-temp minus dew point
     # current actuator readback (for snapshots / diff context)
     relais_aan: bool | None = None
     ev_laden_aan: bool | None = None
@@ -154,6 +163,35 @@ class Config:
     max_laadvermogen_net_w: float = 2000.0
     max_netladen_uren_per_dag: float = 3.0
     zon_slecht_drempel_kwh: float = 10.0
+
+    # arbitrage (peak reserve / pre-peak charging / peak export)
+    arbitrage_aan: bool = False
+    piek_export_aan: bool = False  # additionally requires arbitrage_aan
+    batterij_capaciteit_kwh: float = 60.0
+    rendement_rondrit: float = 0.87  # battery round-trip efficiency
+    huis_basislast_kw: float = 1.5  # baseline house load / EMA seed
+    piek_drempel_eur: float = 0.35  # absolute peak threshold €/kWh
+    arbitrage_min_marge: float = 0.10  # min spread €/kWh after efficiency
+    export_bodem_eur: float = 0.30  # never export below this tariff
+    piek_reserve_soc: float = 35.0  # SoC floor guarded through a peak
+    doel_soc_piek: float = 95.0  # pre-peak charge ceiling
+    max_export_w: float = 5000.0
+    max_export_uren_per_dag: float = 4.0  # battery-wear guard
+    zon_einde_uur: int = 21  # uniform solar spread fallback end hour
+
+    # voorkoelen (pre-cool the house on surplus via Nibe cooling offset)
+    voorkoelen_aan: bool = False
+    voorkoelen_drempel_kw: float = 4.0  # surplus needed to start
+    voorkoelen_uitschakel_kw: float = 1.5
+    voorkoelen_uitschakel_vertraging_s: float = 900.0
+    voorkoelen_vloer_c: float = 21.0  # comfort floor: never cool below
+    voorkoelen_buiten_min_c: float = 18.0  # season guard
+    voorkoelen_offset: float = -3.0  # cooling-curve offset while active
+    koel_offset_herstel: float = 0.0
+    voorkoelen_dwell_s: float = 1800.0  # compressor-friendly channel dwell
+    # condensation guard: coldest floor must stay this far above the room's
+    # dew point; 0 disables the guard (then the margin input is ignored)
+    dauwpunt_marge_min_c: float = 2.0
 
     # negative price overlay
     neg_prijs_vertraging_s: float = 120.0
@@ -215,10 +253,48 @@ class EngineState:
     netladen_uren_vandaag: float = 0.0
     netladen_datum: str | None = None  # ISO date the counter belongs to
 
+    # arbitrage
+    piek_vasthouden_actief: bool = False
+    piek_export_actief: bool = False
+    export_uren_vandaag: float = 0.0
+    export_datum: str | None = None  # ISO date the export counter belongs to
+
+    # voorkoelen (own dwell: a pre-cool flip must not freeze warmwater/EV)
+    voorkoelen_actief: bool = False
+    voorkoelen_dwell_tot: datetime | None = None
+    voorkoelen_overschot_laag_sinds: datetime | None = None
+    voorkoelen_soc_laag_sinds: datetime | None = None
+
     geforceerde_modus: Modus | None = None
     geforceerd_tot: datetime | None = None
 
     laatste_tick: datetime | None = None
+
+
+class ArbitrageActie(StrEnum):
+    """What the arbitrage planner wants right now."""
+
+    GEEN = "geen"
+    VOORLADEN = "voorladen"  # grid-charge in a chosen cheap pre-peak slot
+    VASTHOUDEN = "vasthouden"  # hold battery for the peak, house on grid
+    ONTLADEN = "ontladen"  # export battery surplus during the peak
+
+
+@dataclass(frozen=True)
+class ArbitragePlan:
+    """The arbitrage decision + its full reasoning (also a dashboard sensor)."""
+
+    actie: ArbitrageActie = ArbitrageActie.GEEN
+    reden: str = ""
+    piek_start: datetime | None = None
+    piek_einde: datetime | None = None
+    piek_gemiddeld: float | None = None  # €/kWh over the peak window
+    behoefte_kwh: float = 0.0  # house need through the peak
+    verwacht_kwh_bij_piek: float = 0.0  # usable battery energy at peak start
+    tekort_kwh: float = 0.0
+    laad_slots: tuple[datetime, ...] = ()  # chosen cheap slot starts
+    export_w: float = 0.0
+    verwacht_vol_om: datetime | None = None  # predicted battery-full time
 
 
 @dataclass(frozen=True)
@@ -237,6 +313,10 @@ class Besluit:
     legionella_bezig: bool = False
     legionella_hold_minuten: float = 0.0
     overschot_kw: float | None = None
+    piek_vasthouden_actief: bool = False
+    piek_export_actief: bool = False
+    voorkoelen_actief: bool = False
+    arbitrage_plan: ArbitragePlan | None = None
 
 
 def kopieer_state(state: EngineState) -> EngineState:

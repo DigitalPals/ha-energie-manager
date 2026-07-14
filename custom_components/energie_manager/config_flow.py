@@ -13,11 +13,15 @@ from .const import (
     CONF_AC_VERBRUIK,
     CONF_BATTERIJ_SOC,
     CONF_BATTERIJ_VERMOGEN,
+    CONF_BINNEN_TEMPERATUUR,
     CONF_BOILER_TEMPERATUUR,
+    CONF_BUITEN_TEMPERATUUR,
+    CONF_DAUWPUNT_MARGE,
     CONF_DOEL,
     CONF_EV_SESSIE_ENERGIE,
     CONF_EV_STATUS_RAW,
     CONF_EV_VERMOGEN,
+    CONF_FORECAST_ATTRIBUUT,
     CONF_FORECAST_GROEP_PATROON,
     CONF_FORECAST_TARIEF_PATROON,
     CONF_NET_VERMOGEN,
@@ -69,6 +73,15 @@ _UITVOER_VELDEN: dict[str, Any] = {
     CONF_DOEL[Doel.SOLAR_LIMIET_2]: _NUMBER,
 }
 
+# optional single-entity fields (may stay unmapped; EntitySelector cannot
+# take "" as default, so presence in defaults switches the vol.Optional form)
+_OPTIONELE_VELDEN: dict[str, Any] = {
+    CONF_BINNEN_TEMPERATUUR: _SENSOR,
+    CONF_BUITEN_TEMPERATUUR: _SENSOR,
+    CONF_DAUWPUNT_MARGE: _SENSOR,
+    CONF_DOEL[Doel.KOEL_OFFSET]: _NUMBER,
+}
+
 
 def _schema(defaults: dict[str, Any]) -> vol.Schema:
     velden: dict[Any, Any] = {}
@@ -86,6 +99,17 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
         ] = _SENSOR
     else:
         velden[vol.Optional(CONF_OVERSCHOT_EXTERN)] = _SENSOR
+    for sleutel, kiezer in _OPTIONELE_VELDEN.items():
+        if defaults.get(sleutel):
+            velden[vol.Optional(sleutel, default=defaults[sleutel])] = kiezer
+        else:
+            velden[vol.Optional(sleutel)] = kiezer
+    velden[
+        vol.Optional(
+            CONF_FORECAST_ATTRIBUUT,
+            default=defaults.get(CONF_FORECAST_ATTRIBUUT, "forecast"),
+        )
+    ] = str
     velden[
         vol.Optional(
             CONF_FORECAST_TARIEF_PATROON,
@@ -104,7 +128,7 @@ def _schema(defaults: dict[str, Any]) -> vol.Schema:
 def _valideer(hass, invoer: dict[str, Any]) -> dict[str, str]:
     """Every mapped single entity must exist."""
     fouten: dict[str, str] = {}
-    for sleutel in {**_INVOER_VELDEN, **_UITVOER_VELDEN}:
+    for sleutel in {**_INVOER_VELDEN, **_UITVOER_VELDEN, **_OPTIONELE_VELDEN}:
         entity_id = invoer.get(sleutel)
         if entity_id and hass.states.get(entity_id) is None:
             fouten[sleutel] = "entiteit_onbekend"
@@ -112,7 +136,7 @@ def _valideer(hass, invoer: dict[str, Any]) -> dict[str, str]:
 
 
 class EnergieManagerConfigFlow(ConfigFlow, domain=DOMAIN):
-    VERSION = 2
+    VERSION = 4
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

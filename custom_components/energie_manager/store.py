@@ -44,6 +44,12 @@ def state_naar_dict(s: EngineState) -> dict[str, Any]:
         },
         "netladen_uren_vandaag": s.netladen_uren_vandaag,
         "netladen_datum": s.netladen_datum,
+        "piek_vasthouden_actief": s.piek_vasthouden_actief,
+        "piek_export_actief": s.piek_export_actief,
+        "export_uren_vandaag": s.export_uren_vandaag,
+        "export_datum": s.export_datum,
+        "voorkoelen_actief": s.voorkoelen_actief,
+        "voorkoelen_dwell_tot": _iso(s.voorkoelen_dwell_tot),
         "geforceerde_modus": str(s.geforceerde_modus) if s.geforceerde_modus else None,
         "geforceerd_tot": _iso(s.geforceerd_tot),
         "sessie": {
@@ -97,6 +103,12 @@ def state_uit_dict(data: dict[str, Any] | None) -> EngineState:
     )
     s.netladen_uren_vandaag = float(data.get("netladen_uren_vandaag", 0.0))
     s.netladen_datum = data.get("netladen_datum")
+    s.piek_vasthouden_actief = bool(data.get("piek_vasthouden_actief", False))
+    s.piek_export_actief = bool(data.get("piek_export_actief", False))
+    s.export_uren_vandaag = float(data.get("export_uren_vandaag", 0.0))
+    s.export_datum = data.get("export_datum")
+    s.voorkoelen_actief = bool(data.get("voorkoelen_actief", False))
+    s.voorkoelen_dwell_tot = _dt(data.get("voorkoelen_dwell_tot"))
     forced = data.get("geforceerde_modus")
     if forced:
         try:

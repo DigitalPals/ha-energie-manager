@@ -10,12 +10,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_BINNEN_TEMPERATUUR,
+    CONF_BUITEN_TEMPERATUUR,
+    CONF_DAUWPUNT_MARGE,
+    CONF_DOEL,
     CONF_EV_SESSIE_ENERGIE,
+    CONF_FORECAST_ATTRIBUUT,
     CONF_NET_VERMOGEN,
     MAPPING_DEFAULTS,
     MIGRATIE_INPUT_DATETIME,
 )
 from .coordinator import EnergieManagerCoordinator
+from .core.model import Doel
 from .executor import Uitvoerder
 from .services import async_registreer_services
 from .store import EnergieManagerStore
@@ -44,6 +50,24 @@ async def async_migrate_entry(
             data.setdefault(sleutel, MAPPING_DEFAULTS[sleutel])
         hass.config_entries.async_update_entry(entry, data=data, version=2)
         _LOGGER.info("Config entry gemigreerd naar versie 2 (EV-sessie invoer)")
+    if entry.version == 2:
+        data = dict(entry.data)
+        for sleutel in (
+            CONF_FORECAST_ATTRIBUUT,
+            CONF_BINNEN_TEMPERATUUR,
+            CONF_BUITEN_TEMPERATUUR,
+            CONF_DOEL[Doel.KOEL_OFFSET],
+        ):
+            data.setdefault(sleutel, MAPPING_DEFAULTS[sleutel])
+        hass.config_entries.async_update_entry(entry, data=data, version=3)
+        _LOGGER.info(
+            "Config entry gemigreerd naar versie 3 (prijsforecast-attribuut + voorkoelen)"
+        )
+    if entry.version == 3:
+        data = dict(entry.data)
+        data.setdefault(CONF_DAUWPUNT_MARGE, MAPPING_DEFAULTS[CONF_DAUWPUNT_MARGE])
+        hass.config_entries.async_update_entry(entry, data=data, version=4)
+        _LOGGER.info("Config entry gemigreerd naar versie 4 (dauwpuntbewaking)")
     return True
 
 

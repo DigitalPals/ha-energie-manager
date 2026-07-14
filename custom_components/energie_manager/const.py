@@ -32,6 +32,10 @@ CONF_FORECAST_GROEP_PATROON = "forecast_groep_patroon"
 CONF_ZON_VANDAAG = "zon_vandaag"  # multi-entity, summed (kWh remaining today)
 CONF_ZON_MORGEN = "zon_morgen"  # multi-entity, summed (kWh tomorrow)
 CONF_OVERSCHOT_EXTERN = "overschot_extern"  # optional override sensor
+CONF_FORECAST_ATTRIBUUT = "forecast_attribuut"  # attr on the tariff sensor
+CONF_BINNEN_TEMPERATUUR = "binnen_temperatuur"  # voorkoelen reference (optional)
+CONF_BUITEN_TEMPERATUUR = "buiten_temperatuur"  # voorkoelen season guard
+CONF_DAUWPUNT_MARGE = "dauwpunt_marge"  # worst-room floor-vs-dew-point margin
 
 # outputs (map 1:1 to core Doel)
 CONF_DOEL: dict[Doel, str] = {
@@ -43,7 +47,11 @@ CONF_DOEL: dict[Doel, str] = {
     Doel.NET_SETPOINT: "net_setpoint",
     Doel.SOLAR_LIMIET_1: "solar_limiet_1",
     Doel.SOLAR_LIMIET_2: "solar_limiet_2",
+    Doel.KOEL_OFFSET: "koel_offset",
 }
+
+# outputs that may be left unmapped (the executor then skips the command)
+DOEL_OPTIONEEL = frozenset({Doel.KOEL_OFFSET})
 
 # Pre-filled defaults for John's installation; every field remappable.
 MAPPING_DEFAULTS: dict[str, str | list[str]] = {
@@ -70,6 +78,11 @@ MAPPING_DEFAULTS: dict[str, str | list[str]] = {
         "sensor.energy_production_tomorrow_3",
     ],
     CONF_OVERSCHOT_EXTERN: "",
+    CONF_FORECAST_ATTRIBUUT: "forecast",
+    CONF_BINNEN_TEMPERATUUR: "",
+    CONF_BUITEN_TEMPERATUUR: "sensor.buitentemperatuur",
+    CONF_DAUWPUNT_MARGE: "sensor.vloer_dauwpunt_marge_minimum",
+    CONF_DOEL[Doel.KOEL_OFFSET]: "",
     CONF_DOEL[Doel.WARMWATER_RELAIS]: "switch.shellypro1_ac15186d9688_switch_0",
     CONF_DOEL[Doel.EV_SCHAKELAAR]: "switch.evcs_charging",
     CONF_DOEL[Doel.EV_STROOM]: "number.evcs_charging_current",
@@ -114,7 +127,16 @@ MAX_LEEFTIJD_S: dict[str, float] = {
     CONF_NET_VERMOGEN: 300,
     CONF_TARIEF: 7200,
     CONF_OVERSCHOT_EXTERN: 300,
+    CONF_BINNEN_TEMPERATUUR: 1800,
+    CONF_BUITEN_TEMPERATUUR: 1800,
+    CONF_DAUWPUNT_MARGE: 1800,
 }
+
+# Zonneplan forecast attribute: prices are integers in 1e-7 €/kWh
+ZONNEPLAN_PRIJS_SCHAAL = 1e-7
+ZONNEPLAN_GROEP_MAP = {"low": "cheap", "high": "expensive", "normal": "normal"}
+# 24h EMA smoothing per 30 s tick for the average-house-load estimate
+HUISLAST_EMA_ALPHA = UPDATE_INTERVAL_S / 86400.0
 
 # migration source for the legionella timestamp
 MIGRATIE_INPUT_DATETIME = "input_datetime.legionella_laatste_succes"

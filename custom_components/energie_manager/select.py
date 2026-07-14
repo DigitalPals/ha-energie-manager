@@ -20,6 +20,7 @@ _KEUZES = [
     str(Modus.WARMWATER_BOOST),
     str(Modus.EV_LADEN),
     str(Modus.GOEDKOOP_LADEN),
+    str(Modus.VOORKOELEN),
     str(Modus.BATTERIJ_BESCHERMEN),
 ]
 _DUUR = timedelta(minutes=30)

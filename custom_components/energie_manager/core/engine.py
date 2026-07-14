@@ -10,9 +10,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from . import ev as ev_mod
+from . import koelen as koelen_mod
 from . import legionella as leg_mod
 from . import sessie as sessie_mod
+from .arbitrage import plan_arbitrage
 from .model import (
+    ArbitrageActie,
     Besluit,
     Commando,
     Config,
@@ -327,6 +330,14 @@ def beslis(
             ev_gewenst = False
             ev_reden = "EV-beheer uit"
 
+    # --- voorkoelen (pre-cool on surplus; below warmwater and EV) ---
+    overschot_voor_koelen = overschot - (
+        config.overschot_drempel_kw if warmwater_gewenst else 0.0
+    )
+    voorkoelen_gewenst, voorkoelen_exempt, voorkoelen_reden = koelen_mod.gewenst(
+        s, invoer, config, overschot_voor_koelen, soc, nu
+    )
+
     # --- battery grid-charge (goedkoop laden) ---
     if s.netladen_datum != nu.date().isoformat():
         s.netladen_datum = nu.date().isoformat()
@@ -352,6 +363,40 @@ def beslis(
         else ""
     )
 
+    # --- arbitrage (always computed so the plan sensor shows a dry run;   ---
+    # --- only applied when the arbitrage switch is on)                    ---
+    if s.export_datum != nu.date().isoformat():
+        s.export_datum = nu.date().isoformat()
+        s.export_uren_vandaag = 0.0
+    huislast_kw = (
+        invoer.huislast_gemiddeld_kw
+        if invoer.huislast_gemiddeld_kw is not None
+        else config.huis_basislast_kw
+    )
+    arb = plan_arbitrage(invoer, config, s, nu, huislast_kw)
+    if (
+        config.arbitrage_aan
+        and arb.actie is ArbitrageActie.VOORLADEN
+        and not netladen_gewenst
+        and s.netladen_uren_vandaag < config.max_netladen_uren_per_dag
+    ):
+        # pre-peak charging rides the existing GOEDKOOP_LADEN rung; its own
+        # energy model accounts for solar, so the zon_slecht gate is bypassed
+        netladen_gewenst = True
+        netladen_reden = arb.reden
+    piek_vasthouden_gewenst = (
+        config.arbitrage_aan
+        and arb.actie is ArbitrageActie.VASTHOUDEN
+        and not netladen_gewenst
+    )
+    piek_export_gewenst = (
+        config.arbitrage_aan
+        and config.piek_export_aan
+        and arb.actie is ArbitrageActie.ONTLADEN
+        and not (warmwater_gewenst or ev_gewenst or voorkoelen_gewenst)
+        and s.export_uren_vandaag < config.max_export_uren_per_dag
+    )
+
     # ------------------------------------------------------------------ #
     # 7. Forced mode (service override); safety rungs already returned.   #
     # ------------------------------------------------------------------ #
@@ -368,7 +413,9 @@ def beslis(
             if ev_gewenst:
                 ev_ampere = config.ev_max_a
             netladen_gewenst = forced is Modus.GOEDKOOP_LADEN
-            warmwater_exempt = ev_exempt = True
+            voorkoelen_gewenst = forced is Modus.VOORKOELEN
+            piek_vasthouden_gewenst = piek_export_gewenst = False
+            warmwater_exempt = ev_exempt = voorkoelen_exempt = True
             redenen.append(f"handmatig geforceerd: {forced}")
 
     # ------------------------------------------------------------------ #
@@ -407,8 +454,29 @@ def beslis(
     if gewisseld:
         s.dwell_tot = nu + timedelta(seconds=config.dwell_s)
 
+    # voorkoelen has its own (longer, compressor-friendly) dwell so a
+    # pre-cool flip never freezes warmwater/EV and vice versa
+    voorkoelen_mag = (
+        s.voorkoelen_dwell_tot is None or nu >= s.voorkoelen_dwell_tot or geforceerd
+    )
+    if voorkoelen_gewenst != s.voorkoelen_actief:
+        if voorkoelen_exempt or voorkoelen_mag:
+            s.voorkoelen_actief = voorkoelen_gewenst
+            s.voorkoelen_dwell_tot = nu + timedelta(
+                seconds=config.voorkoelen_dwell_s
+            )
+        else:
+            redenen.append("voorkoelen-wissel wacht op minimale modusduur")
+
+    # hold/export follow the hourly plan (already hysteresised in kWh):
+    # slot-boundary transitions are schedule-driven, not noise -> no dwell
+    s.piek_vasthouden_actief = piek_vasthouden_gewenst
+    s.piek_export_actief = piek_export_gewenst
+
     if s.netladen_actief and tick_s > 0:
         s.netladen_uren_vandaag += tick_s / 3600.0
+    if s.piek_export_actief and tick_s > 0:
+        s.export_uren_vandaag += tick_s / 3600.0
 
     # ------------------------------------------------------------------ #
     # 9. Mode label + commands (complete desired state).                  #
@@ -425,6 +493,16 @@ def beslis(
         modus = Modus.EV_LADEN
         if ev_reden:
             redenen.insert(0, ev_reden)
+    elif s.voorkoelen_actief:
+        modus = Modus.VOORKOELEN
+        if voorkoelen_reden:
+            redenen.insert(0, voorkoelen_reden)
+    elif s.piek_export_actief:
+        modus = Modus.PIEK_ONTLADEN
+        redenen.insert(0, arb.reden)
+    elif s.piek_vasthouden_actief:
+        modus = Modus.PIEK_VASTHOUDEN
+        redenen.insert(0, arb.reden)
     elif soc <= config.batterij_reserve_soc:
         modus = Modus.BATTERIJ_BESCHERMEN
         redenen.insert(0, f"accu {soc:.0f}% op of onder reserve ({config.batterij_reserve_soc:.0f}%)")
@@ -435,12 +513,22 @@ def beslis(
         redenen.append(ev_reden)
     if s.warmwater_actief and modus is not Modus.WARMWATER_BOOST and warmwater_reden:
         redenen.append(warmwater_reden)
+    if s.voorkoelen_actief and modus is not Modus.VOORKOELEN and voorkoelen_reden:
+        redenen.append(voorkoelen_reden)
+    if (
+        (s.piek_vasthouden_actief or s.piek_export_actief)
+        and modus not in (Modus.PIEK_VASTHOUDEN, Modus.PIEK_ONTLADEN)
+        and arb.reden
+    ):
+        redenen.append(arb.reden)
 
     if modus is not s.actieve_modus:
         s.actieve_modus = modus
         s.modus_sinds = nu
 
-    commandos = _commandos(config, s, soc, overschot, overlays)
+    commandos = _commandos(
+        config, s, soc, overschot, overlays, export_w=arb.export_w
+    )
 
     besluit = Besluit(
         modus=modus,
@@ -454,6 +542,10 @@ def beslis(
         legionella_bezig=hold.bezig or s.legionella.forceer_actief,
         legionella_hold_minuten=hold.hold_minuten,
         overschot_kw=overschot,
+        piek_vasthouden_actief=s.piek_vasthouden_actief,
+        piek_export_actief=s.piek_export_actief,
+        voorkoelen_actief=s.voorkoelen_actief,
+        arbitrage_plan=arb,
     )
     return besluit, s
 
@@ -473,26 +565,35 @@ def _commandos(
     soc: float | None,
     overschot: float | None,
     overlays: frozenset[Overlay],
+    export_w: float = 0.0,
 ) -> tuple[Commando, ...]:
     """Compose the complete desired actuator state for this tick."""
     neg = Overlay.NEGATIEVE_PRIJS in overlays
 
     # discharge rail: block battery discharge whenever we are deliberately
-    # pulling from the grid (cheap charging / grid soak) or protecting it.
+    # pulling from the grid (cheap charging / grid soak), reserving it for a
+    # price peak, or protecting it.
     grid_soak = s.netladen_actief or (
-        (s.warmwater_actief or s.ev_actief)
+        (s.warmwater_actief or s.ev_actief or s.voorkoelen_actief)
         and overschot is not None
         and overschot < config.uitschakel_drempel_kw
     )
     beschermen = soc is not None and soc <= config.batterij_reserve_soc
-    ontlading = 0.0 if (neg or grid_soak or beschermen) else config.ontlading_herstel_w
+    ontlading = (
+        0.0
+        if (neg or grid_soak or beschermen or s.piek_vasthouden_actief)
+        else config.ontlading_herstel_w
+    )
 
     feed_in = 0.0 if neg else config.feed_in_herstel_w
     curtail = neg and soc is not None and soc > config.neg_prijs_solar_limiet_soc
     limiet = 0.0 if curtail else 100.0
-    setpoint = (
-        config.max_laadvermogen_net_w if s.netladen_actief else config.setpoint_idle_w
-    )
+    if s.netladen_actief:
+        setpoint = config.max_laadvermogen_net_w
+    elif s.piek_export_actief and not neg:
+        setpoint = -export_w
+    else:
+        setpoint = config.setpoint_idle_w
 
     cmds = [
         Commando(Doel.WARMWATER_RELAIS, s.warmwater_actief),
@@ -502,6 +603,12 @@ def _commandos(
         Commando(Doel.NET_SETPOINT, setpoint),
         Commando(Doel.SOLAR_LIMIET_1, limiet),
         Commando(Doel.SOLAR_LIMIET_2, limiet),
+        Commando(
+            Doel.KOEL_OFFSET,
+            config.voorkoelen_offset
+            if s.voorkoelen_actief
+            else config.koel_offset_herstel,
+        ),
     ]
     if s.ev_actief and s.ev_ampere >= config.ev_min_a:
         cmds.insert(2, Commando(Doel.EV_STROOM, float(s.ev_ampere)))
@@ -528,6 +635,9 @@ def _veilige_terugval(
         s.ev_actief = False
         s.ev_ampere = 0
     s.netladen_actief = False
+    s.piek_vasthouden_actief = False
+    s.piek_export_actief = False
+    s.voorkoelen_actief = False
     neg = Overlay.NEGATIEVE_PRIJS in overlays
     cmds += [
         Commando(Doel.FEED_IN, 0.0 if neg else config.feed_in_herstel_w),
@@ -535,6 +645,7 @@ def _veilige_terugval(
         Commando(Doel.NET_SETPOINT, config.setpoint_idle_w),
         Commando(Doel.SOLAR_LIMIET_1, 100.0),
         Commando(Doel.SOLAR_LIMIET_2, 100.0),
+        Commando(Doel.KOEL_OFFSET, config.koel_offset_herstel),
     ]
     if s.actieve_modus is not Modus.VEILIGE_TERUGVAL:
         s.actieve_modus = Modus.VEILIGE_TERUGVAL
@@ -566,6 +677,9 @@ def _noodreserve(
         s.ev_actief = False
         s.ev_ampere = 0
     s.netladen_actief = False
+    s.piek_vasthouden_actief = False
+    s.piek_export_actief = False
+    s.voorkoelen_actief = False
     neg = Overlay.NEGATIEVE_PRIJS in overlays
     cmds += [
         Commando(Doel.FEED_IN, 0.0 if neg else config.feed_in_herstel_w),
@@ -573,6 +687,7 @@ def _noodreserve(
         Commando(Doel.NET_SETPOINT, config.setpoint_idle_w),
         Commando(Doel.SOLAR_LIMIET_1, 100.0),
         Commando(Doel.SOLAR_LIMIET_2, 100.0),
+        Commando(Doel.KOEL_OFFSET, config.koel_offset_herstel),
     ]
     if s.actieve_modus is not Modus.NOODRESERVE:
         s.actieve_modus = Modus.NOODRESERVE

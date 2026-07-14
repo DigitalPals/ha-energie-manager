@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from .model import PrijsSlot
 
 GROEP_GOEDKOOP = "cheap"
+GROEP_DUUR = "expensive"
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,41 @@ def bouw_slots(
                 groep=groep,
             )
         )
+    return tuple(slots)
+
+
+def bouw_slots_zonneplan(
+    nu: datetime,
+    tarief_nu: float | None,
+    forecast: list[tuple[float | None, str | None, datetime | None, float | None]],
+) -> tuple[PrijsSlot, ...]:
+    """Build the slot list from the Zonneplan forecast attribute array.
+
+    ``forecast`` entries are (tarief, groep, start, zon_pct); entries without
+    a tariff or start are skipped, fully-past slots dropped. The live tariff
+    refines the slot covering ``nu``; if no slot covers ``nu`` a bare
+    current-hour slot is prepended so ``slot_nu`` keeps working.
+    """
+    huidig_uur = nu.replace(minute=0, second=0, microsecond=0)
+    slots: list[PrijsSlot] = []
+    for tarief, groep, start, zon_pct in forecast:
+        if tarief is None or start is None:
+            continue
+        if start + timedelta(hours=1) <= nu:
+            continue  # fully in the past
+        slots.append(PrijsSlot(start=start, tarief=tarief, groep=groep, zon_pct=zon_pct))
+    slots.sort(key=lambda s: s.start)
+    dekt_nu = any(s.start <= nu < s.start + timedelta(hours=1) for s in slots)
+    if tarief_nu is not None:
+        if dekt_nu:
+            slots = [
+                PrijsSlot(s.start, tarief_nu, s.groep, s.zon_pct)
+                if s.start <= nu < s.start + timedelta(hours=1)
+                else s
+                for s in slots
+            ]
+        else:
+            slots.insert(0, PrijsSlot(start=huidig_uur, tarief=tarief_nu, groep=None))
     return tuple(slots)
 
 
@@ -116,3 +152,65 @@ def goedkoopste_venster(
                 slots=tuple(kandidaat),
             )
     return beste
+
+
+def is_piek(slot: PrijsSlot, drempel: float) -> bool:
+    """Is this slot an expensive/peak hour?
+
+    Zonneplan's own banding is relative (catches peaks on cheap days); the
+    absolute threshold catches missing or degenerate banding. Whether acting
+    on a peak is *worth it* is a separate economics gate (core.arbitrage).
+    """
+    return slot.groep == GROEP_DUUR or slot.tarief >= drempel
+
+
+def piek_vensters(
+    slots: tuple[PrijsSlot, ...], nu: datetime, drempel: float
+) -> tuple[Venster, ...]:
+    """Contiguous runs of peak slots that have not fully passed, by start."""
+    geordend = sorted((s for s in slots if is_piek(s, drempel)), key=lambda s: s.start)
+    vensters: list[Venster] = []
+    run: list[PrijsSlot] = []
+
+    def _sluit_af() -> None:
+        if not run:
+            return
+        einde = run[-1].start + timedelta(hours=1)
+        if einde > nu:
+            vensters.append(
+                Venster(
+                    start=run[0].start,
+                    einde=einde,
+                    gemiddeld_tarief=sum(s.tarief for s in run) / len(run),
+                    slots=tuple(run),
+                )
+            )
+
+    for slot in geordend:
+        if run and slot.start - run[-1].start != timedelta(hours=1):
+            _sluit_af()
+            run = []
+        run.append(slot)
+    _sluit_af()
+    return tuple(vensters)
+
+
+def goedkoopste_slots(
+    slots: tuple[PrijsSlot, ...], aantal: int, niet_later_dan: datetime | None = None
+) -> tuple[PrijsSlot, ...]:
+    """The ``aantal`` cheapest (not necessarily contiguous) whole-hour slots.
+
+    ``niet_later_dan`` bounds each slot's END (deadline semantics, like
+    ``goedkoopste_venster``). Result is sorted by start time.
+    """
+    if aantal < 1:
+        return ()
+    kandidaten = [
+        s
+        for s in slots
+        if niet_later_dan is None or s.start + timedelta(hours=1) <= niet_later_dan
+    ]
+    kandidaten.sort(key=lambda s: (s.tarief, s.start))
+    gekozen = kandidaten[:aantal]
+    gekozen.sort(key=lambda s: s.start)
+    return tuple(gekozen)

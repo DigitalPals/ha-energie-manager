@@ -16,7 +16,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .coordinator import EnergieManagerCoordinator
-from .core.model import Modus, SessieRecord, SessieState
+from .core.model import ArbitrageActie, ArbitragePlan, Modus, SessieRecord, SessieState
 from .core.prijs import goedkoopste_venster
 from .entity import EnergieManagerEntity
 
@@ -37,6 +37,9 @@ async def async_setup_entry(
             EvLaadstroomSensor(coordinator),
             EvSessieKostenSensor(coordinator),
             EvSessiesSensor(coordinator),
+            ArbitragePlanSensor(coordinator),
+            VerwachteAccuVolSensor(coordinator),
+            VolgendePiekSensor(coordinator),
         ]
     )
 
@@ -295,6 +298,103 @@ class EvSessieKostenSensor(EnergieManagerEntity, SensorEntity):
             }
         )
         return attrs
+
+
+class ArbitragePlanSensor(EnergieManagerEntity, SensorEntity):
+    """The arbitrage planner's current action + full reasoning.
+
+    Always computed (dry run), also while the arbitrage switch is off — the
+    attributes show what WOULD happen, for observation before enabling."""
+
+    _attr_name = "Arbitrageplan"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [str(a) for a in ArbitrageActie]
+    _attr_icon = "mdi:swap-vertical-bold"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "arbitrageplan")
+
+    def _plan(self) -> ArbitragePlan | None:
+        besluit = self.coordinator.data
+        return besluit.arbitrage_plan if besluit else None
+
+    @property
+    def native_value(self) -> str | None:
+        plan = self._plan()
+        return str(plan.actie) if plan else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        plan = self._plan()
+        if plan is None:
+            return {}
+        s = self.coordinator.engine_state
+        return {
+            "reden": plan.reden,
+            "piek_start": plan.piek_start.isoformat() if plan.piek_start else None,
+            "piek_einde": plan.piek_einde.isoformat() if plan.piek_einde else None,
+            "piek_gemiddeld_tarief": round(plan.piek_gemiddeld, 4)
+            if plan.piek_gemiddeld is not None
+            else None,
+            "behoefte_kwh": plan.behoefte_kwh,
+            "verwacht_kwh_bij_piek": plan.verwacht_kwh_bij_piek,
+            "tekort_kwh": plan.tekort_kwh,
+            "laad_slots": [t.isoformat() for t in plan.laad_slots],
+            "export_w": plan.export_w,
+            "export_uren_vandaag": round(s.export_uren_vandaag, 2) if s else None,
+            "huislast_gemiddeld_kw": round(self.coordinator.huislast_ema_kw, 2)
+            if self.coordinator.huislast_ema_kw is not None
+            else None,
+        }
+
+
+class VerwachteAccuVolSensor(EnergieManagerEntity, SensorEntity):
+    """Predicted time the battery reaches the pre-peak target SoC today."""
+
+    _attr_name = "Verwachte accu vol"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:battery-clock"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "verwachte_accu_vol")
+
+    @property
+    def native_value(self) -> datetime | None:
+        besluit = self.coordinator.data
+        plan = besluit.arbitrage_plan if besluit else None
+        if plan is None or plan.verwacht_vol_om is None:
+            return None
+        return dt_util.as_utc(plan.verwacht_vol_om)
+
+
+class VolgendePiekSensor(EnergieManagerEntity, SensorEntity):
+    _attr_name = "Volgende piek"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:chart-bell-curve"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "volgende_piek")
+
+    @property
+    def native_value(self) -> datetime | None:
+        besluit = self.coordinator.data
+        plan = besluit.arbitrage_plan if besluit else None
+        if plan is None or plan.piek_start is None:
+            return None
+        return dt_util.as_utc(plan.piek_start)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        besluit = self.coordinator.data
+        plan = besluit.arbitrage_plan if besluit else None
+        if plan is None:
+            return {}
+        return {
+            "einde": plan.piek_einde.isoformat() if plan.piek_einde else None,
+            "gemiddeld_tarief": round(plan.piek_gemiddeld, 4)
+            if plan.piek_gemiddeld is not None
+            else None,
+        }
 
 
 class EvSessiesSensor(EnergieManagerEntity, SensorEntity):

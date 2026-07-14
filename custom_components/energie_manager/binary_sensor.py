@@ -27,6 +27,9 @@ async def async_setup_entry(
             EvLadenBinarySensor(coordinator),
             LegionellaBezigBinarySensor(coordinator),
             InvoerVerouderdBinarySensor(coordinator),
+            VoorkoelenBinarySensor(coordinator),
+            PiekVasthoudenBinarySensor(coordinator),
+            PiekOntladenBinarySensor(coordinator),
         ]
     )
 
@@ -90,6 +93,60 @@ class LegionellaBezigBinarySensor(EnergieManagerEntity, BinarySensorEntity):
         return {
             "hold_minuten": round(self.coordinator.data.legionella_hold_minuten, 1)
         }
+
+
+class VoorkoelenBinarySensor(EnergieManagerEntity, BinarySensorEntity):
+    _attr_name = "Voorkoelen actief"
+    _attr_device_class = BinarySensorDeviceClass.COLD
+    _attr_icon = "mdi:snowflake"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "voorkoelen_actief")
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data.voorkoelen_actief if self.coordinator.data else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        invoer = self.coordinator.laatste_invoer
+        if invoer is None:
+            return {}
+        return {
+            "binnen_temp": invoer.binnen_temp,
+            "buiten_temp": invoer.buiten_temp,
+            "dauwpunt_marge": invoer.dauwpunt_marge_c,
+        }
+
+
+class PiekVasthoudenBinarySensor(EnergieManagerEntity, BinarySensorEntity):
+    _attr_name = "Piek vasthouden actief"
+    _attr_icon = "mdi:battery-lock"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "piek_vasthouden_actief")
+
+    @property
+    def is_on(self) -> bool | None:
+        return (
+            self.coordinator.data.piek_vasthouden_actief
+            if self.coordinator.data
+            else None
+        )
+
+
+class PiekOntladenBinarySensor(EnergieManagerEntity, BinarySensorEntity):
+    _attr_name = "Piek teruglevering actief"
+    _attr_icon = "mdi:transmission-tower-export"
+
+    def __init__(self, coordinator: EnergieManagerCoordinator) -> None:
+        super().__init__(coordinator, "piek_ontladen_actief")
+
+    @property
+    def is_on(self) -> bool | None:
+        return (
+            self.coordinator.data.piek_export_actief if self.coordinator.data else None
+        )
 
 
 class InvoerVerouderdBinarySensor(EnergieManagerEntity, BinarySensorEntity):

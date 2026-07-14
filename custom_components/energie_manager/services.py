@@ -31,6 +31,7 @@ _FORCEER_SCHEMA = vol.Schema(
                     Modus.WARMWATER_BOOST,
                     Modus.EV_LADEN,
                     Modus.GOEDKOOP_LADEN,
+                    Modus.VOORKOELEN,
                     Modus.BATTERIJ_BESCHERMEN,
                 )
             ]

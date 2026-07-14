@@ -1,7 +1,9 @@
 {
   "domain": "energie_manager",
   "name": "Energie Manager",
-  "codeowners": ["@DigitalPals"],
+  "codeowners": [
+    "@DigitalPals"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/DigitalPals/ha-energie-manager",
@@ -10,5 +12,5 @@
   "issue_tracker": "https://github.com/DigitalPals/ha-energie-manager/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.4.0"
+  "version": "0.5.1"
 }

@@ -35,6 +35,8 @@ def zet_states(hass, **over):
         MAPPING_DEFAULTS["ev_sessie_energie"]: "0.00",
         MAPPING_DEFAULTS["net_vermogen"]: "0",
         MAPPING_DEFAULTS["tarief"]: "0.20",
+        MAPPING_DEFAULTS["buiten_temperatuur"]: "19.1",
+        MAPPING_DEFAULTS["dauwpunt_marge"]: "3.0",
         RELAIS: "off",
         EV_SCHAKELAAR: "off",
         MAPPING_DEFAULTS["ev_stroom"]: "6",
@@ -355,6 +357,115 @@ async def test_migratie_entry_v1_backfill(hass):
         version=1,
     )
     await _setup(hass, entry)
-    assert entry.version == 2
+    assert entry.version == 4
     assert entry.data["ev_sessie_energie"] == MAPPING_DEFAULTS["ev_sessie_energie"]
     assert entry.data["net_vermogen"] == MAPPING_DEFAULTS["net_vermogen"]
+    # the v2->v3->v4 steps ran through as well
+    assert entry.data["forecast_attribuut"] == "forecast"
+    assert entry.data["buiten_temperatuur"] == MAPPING_DEFAULTS["buiten_temperatuur"]
+    assert entry.data["dauwpunt_marge"] == MAPPING_DEFAULTS["dauwpunt_marge"]
+
+
+async def test_migratie_entry_v2_naar_v4(hass):
+    zet_states(hass)
+    data = {
+        k: v
+        for k, v in MAPPING_DEFAULTS.items()
+        if k
+        not in (
+            "forecast_attribuut",
+            "binnen_temperatuur",
+            "buiten_temperatuur",
+            "koel_offset",
+            "dauwpunt_marge",
+        )
+    }
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Energie Manager",
+        unique_id=DOMAIN,
+        data=data,
+        version=2,
+    )
+    await _setup(hass, entry)
+    assert entry.version == 4
+    assert entry.data["forecast_attribuut"] == "forecast"
+    assert entry.data["binnen_temperatuur"] == ""
+    assert entry.data["buiten_temperatuur"] == MAPPING_DEFAULTS["buiten_temperatuur"]
+    assert entry.data["koel_offset"] == ""
+    assert entry.data["dauwpunt_marge"] == MAPPING_DEFAULTS["dauwpunt_marge"]
+
+
+async def test_zonneplan_forecast_attribuut_parsing(hass):
+    """The tariff sensor's forecast array becomes the price-slot source."""
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    zet_states(hass)
+    nu = dt_util.now().replace(minute=0, second=0, microsecond=0)
+    forecast = []
+    for n in range(6):
+        forecast.append(
+            {
+                "electricity_price": 3000000 + n * 1000000,  # 0.30, 0.40, ...
+                "tariff_group": "high" if n >= 3 else "low",
+                "solar_percentage": 50 if n < 3 else 0,
+                "datetime": (nu + timedelta(hours=n))
+                .astimezone(dt_util.UTC)
+                .isoformat(),
+            }
+        )
+    forecast.append({"electricity_price": "kapot"})  # malformed: skipped
+    hass.states.async_set(
+        MAPPING_DEFAULTS["tarief"], "0.30", {"forecast": forecast}
+    )
+    entry = maak_entry()
+    await _setup(hass, entry)
+    coordinator = entry.runtime_data
+
+    slots = coordinator.laatste_invoer.prijs_slots
+    assert len(slots) == 6
+    assert slots[0].tarief == pytest.approx(0.30)  # live tariff merged in
+    assert slots[0].groep == "cheap"
+    assert slots[0].zon_pct == 50
+    assert slots[-1].groep == "expensive"
+    assert slots[-1].tarief == pytest.approx(0.80)
+    # arbitrage plan sensor sees the upcoming expensive window (dry run)
+    plan = hass.states.get("sensor.energie_manager_arbitrageplan")
+    assert plan is not None
+    assert plan.attributes["piek_start"] is not None
+
+
+async def test_executor_slaat_buiten_bereik_over(hass):
+    """A target whose reported range excludes the value is skipped, not
+    clamped (startup race: template numbers briefly report 0-100)."""
+    zet_states(hass)
+    hass.states.async_set(
+        MAPPING_DEFAULTS["max_ontlading"], "100", {"min": 0, "max": 100}
+    )
+    async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "switch", "turn_off")
+    setw = async_mock_service(hass, "number", "set_value")
+
+    entry = maak_entry(**{OPT_AUTOMATISCH_BEHEER: True})
+    await _setup(hass, entry)
+
+    assert not [
+        c
+        for c in setw
+        if c.data["entity_id"] == MAPPING_DEFAULTS["max_ontlading"]
+    ]
+
+
+async def test_koel_offset_onmapped_geen_calls(hass):
+    """An unmapped koel_offset target is skipped by the executor."""
+    zet_states(hass)
+    async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "switch", "turn_off")
+    setw = async_mock_service(hass, "number", "set_value")
+
+    entry = maak_entry(**{OPT_AUTOMATISCH_BEHEER: True})
+    await _setup(hass, entry)
+    # default mapping leaves koel_offset "" -> no number.set_value for it
+    assert not [c for c in setw if "cool" in str(c.data.get("entity_id", ""))]

@@ -68,6 +68,24 @@ VLAGGEN: tuple[VlagBeschrijving, ...] = (
         icon="mdi:ev-station",
         standaard=False,
     ),
+    VlagBeschrijving(
+        key="arbitrage_aan",
+        name="Accu arbitrage",
+        icon="mdi:swap-vertical-bold",
+        standaard=False,
+    ),
+    VlagBeschrijving(
+        key="piek_export_aan",
+        name="Piek teruglevering",
+        icon="mdi:transmission-tower-export",
+        standaard=False,
+    ),
+    VlagBeschrijving(
+        key="voorkoelen_aan",
+        name="Voorkoelen beheer",
+        icon="mdi:snowflake",
+        standaard=False,
+    ),
 )
 
 
