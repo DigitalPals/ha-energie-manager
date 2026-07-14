@@ -516,7 +516,9 @@ def _veilige_terugval(
     overlays: frozenset[Overlay],
     ontbrekend: list[str],
 ) -> tuple[Besluit, EngineState]:
-    """Inputs unusable: release loads we own, preserve the battery."""
+    """Inputs unusable: release loads we own, hand the ESS back to native
+    self-consumption. The inverter's own minimum-SoC guard protects the
+    battery, so blocking discharge here would only force grid import."""
     cmds: list[Commando] = []
     if s.warmwater_actief:
         cmds.append(Commando(Doel.WARMWATER_RELAIS, False, "veilige terugval"))
@@ -529,7 +531,7 @@ def _veilige_terugval(
     neg = Overlay.NEGATIEVE_PRIJS in overlays
     cmds += [
         Commando(Doel.FEED_IN, 0.0 if neg else config.feed_in_herstel_w),
-        Commando(Doel.MAX_ONTLADING, 0.0),
+        Commando(Doel.MAX_ONTLADING, 0.0 if neg else config.ontlading_herstel_w),
         Commando(Doel.NET_SETPOINT, config.setpoint_idle_w),
         Commando(Doel.SOLAR_LIMIET_1, 100.0),
         Commando(Doel.SOLAR_LIMIET_2, 100.0),

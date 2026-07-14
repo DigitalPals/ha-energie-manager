@@ -157,6 +157,32 @@ async def test_veilige_terugval_bij_onbeschikbare_invoer(hass):
     assert probleem.state == "on"
 
 
+async def test_ongewijzigde_invoer_is_niet_verouderd(hass, freezer):
+    # Constant values (e.g. SoC behind a template proxy that only re-reports
+    # on change) must NOT trip veilige_terugval; age is informational only.
+    zet_states(hass)
+    async_mock_service(hass, "switch", "turn_on")
+    async_mock_service(hass, "switch", "turn_off")
+    async_mock_service(hass, "number", "set_value")
+
+    entry = maak_entry(**{OPT_AUTOMATISCH_BEHEER: True})
+    await _setup(hass, entry)
+
+    freezer.tick(700)  # beyond every MAX_LEEFTIJD_S threshold (SoC = 600 s)
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    modus = hass.states.get("sensor.energie_manager_actieve_modus")
+    assert modus.state != "veilige_terugval"
+    probleem = hass.states.get("binary_sensor.energie_manager_invoer_verouderd")
+    assert probleem.state == "off"
+    assert any(
+        naam.startswith("batterij_soc")
+        for naam in probleem.attributes["lang_ongewijzigd"]
+    )
+
+
 async def test_legionella_migratie_uit_input_datetime(hass):
     zet_states(hass)
     async_mock_service(hass, "switch", "turn_on")

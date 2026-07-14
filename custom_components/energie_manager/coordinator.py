@@ -71,6 +71,7 @@ class EnergieManagerCoordinator(DataUpdateCoordinator[Besluit]):
         self.geschiedenis: deque[dict[str, Any]] = deque(maxlen=GESCHIEDENIS_MAX)
         self.laatste_invoer: Invoer | None = None
         self.verouderd: list[str] = []
+        self.lang_ongewijzigd: list[str] = []
 
     async def async_initialiseer(self) -> None:
         self.engine_state = await self.store.laad()
@@ -91,12 +92,15 @@ class EnergieManagerCoordinator(DataUpdateCoordinator[Besluit]):
         if state is None or state.state in ("unknown", "unavailable"):
             self.verouderd.append(sleutel)
             return None
+        # Age is informational only: template-proxied sources (victron_gx
+        # compat sensors) only re-report on value change, so a constant
+        # value is indistinguishable from a frozen source. Real outages
+        # arrive as unavailable/unknown via their availability templates.
         max_leeftijd = MAX_LEEFTIJD_S.get(sleutel)
         if max_leeftijd is not None:
             leeftijd = (dt_util.utcnow() - state.last_reported).total_seconds()
             if leeftijd > max_leeftijd:
-                self.verouderd.append(f"{sleutel} ({leeftijd:.0f}s oud)")
-                return None
+                self.lang_ongewijzigd.append(f"{sleutel} ({leeftijd:.0f}s)")
         try:
             return float(state.state)
         except ValueError:
@@ -161,6 +165,7 @@ class EnergieManagerCoordinator(DataUpdateCoordinator[Besluit]):
 
     def bouw_invoer(self, nu: datetime) -> Invoer:
         self.verouderd = []
+        self.lang_ongewijzigd = []
         ev_raw = self._lees_float(CONF_EV_STATUS_RAW)
         extern = None
         if self._mapping(CONF_OVERSCHOT_EXTERN):

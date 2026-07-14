@@ -87,8 +87,24 @@ def test_veilige_terugval_bij_ontbrekende_invoer():
     b, s = beslis(invoer(pv_w=None), config(), state(warmwater_actief=True), T0)
     assert b.modus is Modus.VEILIGE_TERUGVAL
     assert cmd_waarde(b, Doel.WARMWATER_RELAIS) is False
-    assert cmd_waarde(b, Doel.MAX_ONTLADING) == 0.0
+    # terugval hands the ESS back to native self-consumption: the inverter's
+    # own min-SoC guard protects the battery, blocking would force grid import
+    assert cmd_waarde(b, Doel.MAX_ONTLADING) == config().ontlading_herstel_w
+    assert cmd_waarde(b, Doel.NET_SETPOINT) == config().setpoint_idle_w
     assert not s.warmwater_actief
+
+
+def test_veilige_terugval_negatieve_prijs_blokkeert_ontlading():
+    b, _ = beslis(
+        invoer(soc=None, tarief=-0.05),
+        config(),
+        state(negatieve_prijs_actief=True),
+        T0,
+    )
+    assert b.modus is Modus.VEILIGE_TERUGVAL
+    assert Overlay.NEGATIEVE_PRIJS in b.overlays
+    assert cmd_waarde(b, Doel.MAX_ONTLADING) == 0.0
+    assert cmd_waarde(b, Doel.FEED_IN) == 0.0
 
 
 def test_veilige_terugval_raakt_niet_ons_relais():

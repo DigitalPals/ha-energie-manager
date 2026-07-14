@@ -109,5 +109,6 @@ class InvoerVerouderdBinarySensor(EnergieManagerEntity, BinarySensorEntity):
         invoer = self.coordinator.laatste_invoer
         return {
             "sensoren": list(invoer.verouderd) if invoer else [],
+            "lang_ongewijzigd": list(self.coordinator.lang_ongewijzigd),
             "commando_fouten": self.coordinator.uitvoerder.fouten,
         }
